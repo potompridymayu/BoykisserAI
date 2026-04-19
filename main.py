@@ -4,11 +4,11 @@ import os
 from aiogram import Bot, Dispatcher, types, F
 from google import genai
 
-# Подтягиваем ключи из настроек сервера (Railway/Render)
+# Подтягиваем ключи из Variables Railway
 TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_KEY")
 
-# Твой ID гифки с котиком
+# Твой ID гифки
 WELCOME_GIF = "CgACAgIAAxkBAAMEaeTWVAABQqZK6helgWVlaTjAez2_AAK2fQACaAMJSPGizpcfJjErOwQ"
 
 # Настройка ИИ и бота
@@ -18,11 +18,10 @@ dp = Dispatcher()
 
 logging.basicConfig(level=logging.INFO)
 
-# 1. ПРИВЕТСТВИЕ НОВЫХ УЧАСТНИКОВ
+# 1. ПРИВЕТСТВИЕ
 @dp.message(F.new_chat_members)
 async def welcome_new_member(message: types.Message):
     for user in message.new_chat_members:
-        # Проверяем, что зашел не сам бот
         if user.id != (await bot.get_me()).id:
             try:
                 await message.answer_animation(
@@ -30,38 +29,37 @@ async def welcome_new_member(message: types.Message):
                     caption=f"Привіт, друк {user.first_name}! Ласкаво просимо! ✨"
                 )
             except Exception as e:
-                logging.error(f"Ошибка отправки гифки: {e}")
+                logging.error(f"Ошибка гифки: {e}")
 
-# 2. РАБОТА С КОМАНДОЙ "bk "
+# 2. ОСНОВНАЯ ЛОГИКА (Исправлено под логи)
 @dp.message(F.text.lower().startswith("bk "))
 async def handle_gemini_request(message: types.Message):
-    # Отрезаем "bk " от сообщения
     user_prompt = message.text[3:].strip()
     if not user_prompt:
         return
     
-    # Показываем, что бот печатает
     await bot.send_chat_action(message.chat.id, action="typing")
     
     try:
-        # Запрос к Gemini
+        # Используем актуальное имя модели, чтобы избежать 404
         response = client.models.generate_content(
             model="gemini-1.5-flash", 
-            contents=f"Ты — дружелюбный персонаж. Отвечай кратко: {user_prompt}"
+            contents=user_prompt
         )
         
         if response.text:
             await message.reply(response.text)
         else:
-            await message.reply("ИИ задумался и ничего не ответил... 😶")
+            await message.reply("ИИ промолчал... попробуй другой вопрос.")
             
     except Exception as e:
-        logging.error(f"Ошибка Gemini: {e}")
-        await message.reply("Ой, что-то пошло не так при общении с ИИ. 🐾")
+        error_msg = str(e)
+        logging.error(f"Ошибка Gemini: {error_msg}")
+        # Выводим часть ошибки в чат для диагностики
+        await message.reply(f"Ошибка ИИ: {error_msg[:50]}... Проверь API ключ в Variables!")
 
 # Запуск
 async def main():
-    # Пропускаем накопленные сообщения при запуске
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
@@ -69,5 +67,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logging.info("Бот остановлен")
-
+        logging.info("Бот выключен")
