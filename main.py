@@ -43,7 +43,7 @@ async def handle_gemini_request(message: types.Message):
     try:
         # Используем актуальное имя модели, чтобы избежать 404
         response = client.models.generate_content(
-            model="gemini-1.5-flash", 
+            model="model="gemini-1.5-flash-8b", 
             contents=user_prompt
         )
         
