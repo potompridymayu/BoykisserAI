@@ -2,78 +2,52 @@ import asyncio
 import logging
 import os
 from aiogram import Bot, Dispatcher, types, F
-from google import genai
+import google.generativeai as genai
 
-# 1. ЗАГРУЗКА КЛЮЧЕЙ (Чистим от лишних пробелов/переносов)
+# Подтягиваем ключи
 TELEGRAM_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_KEY", "").strip()
 
-# Твой ID гифки
-WELCOME_GIF = "CgACAgIAAxkBAAMEaeTWVAABQqZK6helgWVlaTjAez2_AAK2fQACaAMJSPGizpcfJjErOwQ"
+# Настройка Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# 2. ИНИЦИАЛИЗАЦИЯ
-client = genai.Client(api_key=GEMINI_API_KEY)
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
 logging.basicConfig(level=logging.INFO)
 
-# 3. ОБРАБОТКА НОВЫХ УЧАСТНИКОВ (Приветствие)
+# Приветствие
 @dp.message(F.new_chat_members)
-async def welcome_new_member(message: types.Message):
+async def welcome(message: types.Message):
     for user in message.new_chat_members:
-        # Не приветствуем самого бота
         if user.id != (await bot.get_me()).id:
-            try:
-                await message.answer_animation(
-                    animation=WELCOME_GIF,
-                    caption=f"Привіт, друк {user.first_name}! Ласкаво просимо! ✨"
-                )
-            except Exception as e:
-                logging.error(f"Ошибка при отправке гифки: {e}")
+            await message.answer(f"Привіт, {user.first_name}! Я ожив!")
 
-# 4. ОБРАБОТКА КОМАНДЫ "bk " (Запросы к ИИ)
+# Ответы ИИ
 @dp.message(F.text.lower().startswith("bk "))
-async def handle_gemini_request(message: types.Message):
-    # Убираем "bk " из начала сообщения
-    user_prompt = message.text[3:].strip()
-    if not user_prompt:
-        return
+async def chat(message: types.Message):
+    prompt = message.text[3:].strip()
+    if not prompt: return
     
-    # Показываем, что бот "печатает"
     await bot.send_chat_action(message.chat.id, action="typing")
     
     try:
-        # Отправляем запрос в Gemini
-        # Используем gemini-1.5-flash — она быстрая и стабильная
-        response = client.models.generate_content(
-            model="gemini-1.5-flash", 
-            contents=user_prompt
-        )
-        
-        if response.text:
-            await message.reply(response.text)
-        else:
-            await message.reply("ИИ промолчал... попробуй спросить иначе.")
-            
+        # Прямой запрос без лишних оберток
+        response = model.generate_content(prompt)
+        await message.reply(response.text)
     except Exception as e:
-        error_text = str(e)
-        logging.error(f"Ошибка Gemini: {error_text}")
-        
-        # Если ошибка 404 — значит Google еще не активировал ключ для этой модели
-        if "404" in error_text:
-            await message.reply("Ошибка 404: Google ещё активирует твой ключ. Подожди 5-10 минут.")
+        error_msg = str(e)
+        logging.error(f"Error: {error_msg}")
+        # Если опять 404, бот сам предложит что делать
+        if "404" in error_msg:
+            await message.reply("Всё еще 404. Google не видит модель. Попробуй подождать 15 минут или смени аккаунт Google.")
         else:
-            await message.reply(f"Ой, что-то пошло не так при общении с ИИ. 🐾\n(Текст ошибки: {error_text[:50]}...)")
+            await message.reply(f"Ошибка: {error_msg[:100]}")
 
-# 5. ЗАПУСК
 async def main():
-    # Удаляем вебхуки, чтобы бот не конфликтовал сам с собой
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logging.info("Бот остановлен")
+    asyncio.run(main())
